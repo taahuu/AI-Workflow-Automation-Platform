@@ -1,0 +1,37 @@
+x-app: &app
+  build: .
+  environment: &env
+    DATABASE_URL: postgresql+psycopg://aiwf:aiwf@db:5432/aiwf
+    LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+    OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
+  depends_on:
+    db: { condition: service_healthy }
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_USER: aiwf, POSTGRES_PASSWORD: aiwf, POSTGRES_DB: aiwf }
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiwf -d aiwf"]
+      interval: 3s
+      retries: 20
+  api:
+    <<: *app
+    ports: ["8000:8000"]
+  worker:
+    <<: *app
+    command: python -m app.infra.worker
+  test:                       # docker compose run --rm test
+    <<: *app
+    profiles: ["test"]
+    environment:
+      <<: *env
+      DATABASE_URL: postgresql+psycopg://aiwf:aiwf@db:5432/aiwf_test
+      LLM_PROVIDER: fake
+    command: pytest -v
+volumes:
+  pgdata:
